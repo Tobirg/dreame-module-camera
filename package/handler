@@ -1,0 +1,41 @@
+#!/bin/sh
+# Camera module handler. The agent runs: handler <action>, with scalar params in P_* variables.
+# Source: during a run the firmware saves front camera photos (672x504 JPEG on r2505) for its AI
+# data collection in /data/ai_offline_collection, a few at a time. The module only reads them.
+PHOTOS=${CAMERA_PHOTOS:-/data/ai_offline_collection}
+FLAG="${DREAME_MODULE_DATA:?}/enabled"
+
+fail() { printf '{"error":"%s"}\n' "$1"; exit 1; }
+# list: newest first, "<mtime> <name>" for each photo.
+# Names go into JSON and HTML unescaped, so anything but plain file names is skipped.
+list() { for f in "$PHOTOS"/*.jpg; do [ -f "$f" ] && echo "$(stat -c %Y "$f") ${f##*/}"; done | grep -E '^[0-9]+ [A-Za-z0-9._-]+$' | sort -rn; }
+status() {
+    enabled=false; [ -e "$FLAG" ] && enabled=true
+    photos=$(list | head -20 | awk 'BEGIN{ORS=""} {printf "%s{\"name\":\"%s\",\"at\":%s}", (NR > 1 ? "," : ""), $2, $1}')
+    printf '{"enabled":%s,"folder":%s,"photos":[%s]}\n' "$enabled" "$([ -d "$PHOTOS" ] && echo true || echo false)" "$photos"
+}
+
+case "$1" in
+check)
+    [ -d "$PHOTOS" ] || [ -d /data/DivideAI ] || fail "Прошивка не сохраняет снимки камеры: модуль несовместим"
+    echo '{"compatible":true}' ;;
+install|status) status ;;
+set)
+    case "$P_enabled" in
+        true) mkdir -p "${FLAG%/*}" && : > "$FLAG" ;;
+        false) rm -f "$FLAG" ;;
+        *) fail "enabled must be true or false" ;;
+    esac
+    status ;;
+photo)
+    [ -e "$FLAG" ] || fail "Показ снимков выключен"
+    name=${P_name:-$(list | head -1 | cut -d' ' -f2)}
+    case "$name" in ''|*[!A-Za-z0-9._-]*|.*) fail "Снимков пока нет" ;; *.jpg) ;; *) fail "bad name" ;; esac
+    f="$PHOTOS/$name"
+    [ -f "$f" ] || fail "Снимок уже удалён прошивкой"
+    printf '{"name":"%s","at":%s,"jpeg":"' "$name" "$(stat -c %Y "$f")"
+    base64 -w 0 "$f"
+    echo '"}' ;;
+uninstall) echo '{}' ;;
+*) fail "unknown action" ;;
+esac
