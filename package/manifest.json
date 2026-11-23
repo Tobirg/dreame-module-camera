@@ -1,10 +1,10 @@
 {
   "name": "camera",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "title": "Камера",
   "description": "Живой просмотр фронтальной камеры (на базе, в уборке и при ручном управлении) и её снимки из уборок. По умолчанию выключен; изображение не покидает робот иначе как в панель агента.",
   "handler": "handler",
   "service": "camera-live",
   "panel": "panel.js",
-  "read_actions": ["status"]
+  "read_actions": ["status", "live"]
 }
