@@ -9,14 +9,14 @@ class HandlerTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         t = Path(self.tmp.name)
-        self.photos, self.data = t / 'photos', t / 'data'
+        self.photos, self.data, self.live = t / 'photos', t / 'data', t / 'live'
         self.photos.mkdir()
 
     def tearDown(self):
         self.tmp.cleanup()
 
     def run_handler(self, action, **params):
-        env = {'PATH': os.environ['PATH'], 'DREAME_MODULE_DATA': str(self.data), 'CAMERA_PHOTOS': str(self.photos)}
+        env = {'PATH': os.environ['PATH'], 'DREAME_MODULE_DATA': str(self.data), 'CAMERA_PHOTOS': str(self.photos), 'CAMERA_LIVE': str(self.live)}
         env.update({f'P_{k}': str(v).lower() if isinstance(v, bool) else str(v) for k, v in params.items()})
         p = subprocess.run(['sh', str(HANDLER), action], env=env, capture_output=True, text=True)
         return p.returncode, json.loads(p.stdout)
@@ -41,6 +41,20 @@ class HandlerTests(unittest.TestCase):
         for bad in ('../x.jpg', 'x.png', 'gone.jpg'):
             self.assertEqual(self.run_handler('photo', name=bad)[0], 1, bad)
         self.assertFalse(self.run_handler('set', enabled=False)[1]['enabled'])
+
+    def test_live(self):
+        self.assertEqual(self.run_handler('live')[0], 1, 'no live view while off')
+        self.run_handler('set', enabled=True)
+        self.assertEqual(self.run_handler('live')[1]['state'], 'starting')
+        self.assertTrue((self.live / 'want').exists(), 'asks the service to capture')
+        (self.live / 'status.json').write_text('{"state":"error","reason":"asleep"}')
+        self.assertEqual(self.run_handler('live')[1]['reason'], 'asleep')
+        (self.live / 'live.jpg').write_bytes(b'\xff\xd8live')
+        code, f = self.run_handler('live')
+        self.assertEqual(base64.b64decode(f['jpeg']), b'\xff\xd8live')
+        old = (self.live / 'live.jpg')
+        os.utime(old, (1000, 1000))
+        self.assertNotIn('jpeg', self.run_handler('live')[1], 'a stale frame is not shown')
 
     def test_no_folder(self):
         self.photos.rmdir()

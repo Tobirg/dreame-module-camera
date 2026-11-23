@@ -3,6 +3,7 @@
 # Source: during a run the firmware saves front camera photos (672x504 JPEG on r2505) for its AI
 # data collection in /data/ai_offline_collection, a few at a time. The module only reads them.
 PHOTOS=${CAMERA_PHOTOS:-/data/ai_offline_collection}
+LIVE=${CAMERA_LIVE:-/tmp/dreame-camera} # written by the camera-live service
 FLAG="${DREAME_MODULE_DATA:?}/enabled"
 
 fail() { printf '{"error":"%s"}\n' "$1"; exit 1; }
@@ -36,6 +37,16 @@ photo)
     printf '{"name":"%s","at":%s,"jpeg":"' "$name" "$(stat -c %Y "$f")"
     base64 -w 0 "$f"
     echo '"}' ;;
+live)
+    # Asks the service to keep capturing; returns the newest frame, or what the service is doing.
+    [ -e "$FLAG" ] || fail "Показ снимков выключен"
+    mkdir -p "$LIVE" && : > "$LIVE/want"
+    f="$LIVE/live.jpg"
+    if [ -f "$f" ] && [ $(( $(date +%s) - $(stat -c %Y "$f") )) -le 3 ]; then
+        printf '{"at":%s,"jpeg":"' "$(stat -c %Y "$f")"; base64 -w 0 "$f"; echo '"}'
+    else
+        cat "$LIVE/status.json" 2>/dev/null || echo '{"state":"starting","reason":""}'
+    fi ;;
 uninstall) echo '{}' ;;
 *) fail "unknown action" ;;
 esac
