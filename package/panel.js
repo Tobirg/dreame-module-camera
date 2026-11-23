@@ -2,14 +2,14 @@
 export default function mount(el, ctx) {
   el.innerHTML = `<label class="check"><input data-r="enabled" type="checkbox">Показывать снимки камеры</label>
 <p class="muted small">Во время уборки прошивка сама фотографирует фронтальной камерой и складывает несколько последних снимков на робот (для сбора данных ИИ). Модуль только показывает их здесь: снимки не покидают робот через модуль. Выключено — модуль снимки не отдаёт.</p>
-<div class="row"><button data-r="live">Смотреть вживую</button><label class="check"><input data-r="light" type="checkbox">Подсветка</label></div>
+<div class="row"><button data-r="live">Смотреть вживую</button><label class="check"><input data-r="light" type="checkbox">Подсветка при просмотре</label></div>
 <p data-r="live-status" class="muted small" role="status"></p>
 <img data-r="live-img" alt="Камера робота вживую" hidden>
 <div data-r="pad">
 <span></span><button data-move="200,0" aria-label="Вперёд">▲</button><span></span>
 <button data-move="0,60" aria-label="Влево">◀</button><button data-r="dock" aria-label="На базу">⌂</button><button data-move="0,-60" aria-label="Вправо">▶</button>
 <span></span><button data-move="-150,0" aria-label="Назад">▼</button><span></span></div>
-<p class="muted small">Изображение идёт, пока открыта эта панель, в том числе во время уборки; на роботе горит индикатор камеры. «Подсветка» включает фронтальный фонарь робота, пока камера снимает (здесь или в Home Assistant). Кнопки движения (или стрелки на клавиатуре) — ручное управление: робот едет, пока кнопка нажата; первое нажатие сводит его с базы, через 15 с без команд он останавливается. ⌂ — на базу.</p>
+<p class="muted small">Изображение идёт, пока открыта эта панель, в том числе во время уборки; на роботе горит индикатор камеры. «Подсветка при просмотре» включает фронтальный фонарь робота, пока камера снимает (здесь или в Home Assistant). Кнопки движения (или стрелки на клавиатуре) — ручное управление: робот едет, пока кнопка нажата; первое нажатие сводит его с базы, через 15 с без команд он останавливается. ⌂ — на базу.</p>
 <p data-r="status" class="muted small" role="status"></p>
 <div class="row"><select data-r="list" aria-label="Снимок"></select><button data-r="refresh">Обновить</button></div>
 <img data-r="photo" alt="Снимок камеры робота" hidden>`;
