@@ -1,6 +1,8 @@
 // camera-live is the camera module's service. It captures the front camera (/dev/video0) only
-// while the panel keeps asking for frames (the handler touches <dir>/want), the module is enabled
-// and the robot is not cleaning, and keeps the newest frame in <dir>/live.jpg. The camera LED is
+// while the panel keeps asking for frames (the handler touches <dir>/want) and the module is
+// enabled, and keeps the newest frame in <dir>/live.jpg. The firmware's AI uses the same sensor
+// through /dev/video12; the driver counts users, so either side opening or closing leaves the other
+// streaming (checked on r2505 both ways at 15 fps). The camera LED is
 // on while it captures, as the firmware does for its own video monitoring.
 package main
 
@@ -10,7 +12,6 @@ import (
 	"encoding/json"
 	"image/jpeg"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -56,7 +57,6 @@ func run(ctx context.Context) {
 		setStatus(state, reason)
 	}
 	defer stopCam("off", "")
-	busyAt, busy := time.Time{}, false
 	for ctx.Err() == nil {
 		time.Sleep(frameGap)
 		st, err := os.Stat(filepath.Join(dir, "want"))
@@ -65,19 +65,11 @@ func run(ctx context.Context) {
 			stopCam("off", "")
 			continue
 		}
-		if time.Since(busyAt) > 3*time.Second {
-			busyAt, busy = time.Now(), cleaning(ctx)
-		}
-		if busy {
-			// shortcut: not tested whether capturing disturbs the AI obstacle camera, so no live view while cleaning.
-			stopCam("busy", "робот убирает: камера занята распознаванием препятствий")
-			continue
-		}
 		if cam == nil {
 			if cam, err = openCamera(device, 864, 480); err != nil {
 				msg := err.Error()
 				if err == errAsleep {
-					msg = "робот спит: питание камеры выключено"
+					msg = "робот спит на базе, питание камеры выключено: кнопка движения сведёт его с базы и разбудит"
 				}
 				setStatus("error", msg)
 				time.Sleep(5 * time.Second)
@@ -104,25 +96,4 @@ func run(ctx context.Context) {
 func setStatus(state, reason string) {
 	b, _ := json.Marshal(map[string]string{"state": state, "reason": reason})
 	_ = os.WriteFile(filepath.Join(dir, "status.json"), b, 0600)
-}
-
-// cleaning asks the agent whether the robot is out on a run; unknown counts as not cleaning.
-func cleaning(ctx context.Context) bool {
-	req, _ := http.NewRequestWithContext(ctx, "GET", os.Getenv("DREAME_API")+"/api/v1/state", nil)
-	req.Header.Set("Authorization", "Bearer "+os.Getenv("DREAME_MODULE_TOKEN"))
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return false
-	}
-	defer res.Body.Close()
-	var snap struct {
-		Result struct {
-			State struct {
-				Activity string `json:"activity"`
-			} `json:"state"`
-		} `json:"result"`
-	}
-	_ = json.NewDecoder(res.Body).Decode(&snap)
-	a := snap.Result.State.Activity
-	return a == "cleaning" || a == "paused" || a == "returning"
 }

@@ -5,7 +5,11 @@ export default function mount(el, ctx) {
 <div class="row"><button data-r="live">Смотреть вживую</button></div>
 <p data-r="live-status" class="muted small" role="status"></p>
 <img data-r="live-img" alt="Камера робота вживую" hidden style="max-width:100%;border-radius:8px">
-<p class="muted small">Живой просмотр работает, пока робот на базе и не спит, и пока открыта эта панель. На роботе в это время горит индикатор камеры.</p>
+<div data-r="pad" style="max-width:240px;display:none;grid-template-columns:repeat(3,1fr);gap:6px">
+<span></span><button data-move="200,0" aria-label="Вперёд">▲</button><span></span>
+<button data-move="0,60" aria-label="Влево">◀</button><button data-r="dock" aria-label="На базу">⌂</button><button data-move="0,-60" aria-label="Вправо">▶</button>
+<span></span><button data-move="-150,0" aria-label="Назад">▼</button><span></span></div>
+<p class="muted small">Изображение идёт, пока открыта эта панель, в том числе во время уборки; на роботе горит индикатор камеры. Кнопки движения (или стрелки на клавиатуре) — ручное управление: робот едет, пока кнопка нажата; первое нажатие сводит его с базы, через 15 с без команд он останавливается. ⌂ — на базу.</p>
 <p data-r="status" class="muted small" role="status"></p>
 <div class="row"><select data-r="list" aria-label="Снимок"></select><button data-r="refresh">Обновить</button></div>
 <img data-r="photo" alt="Снимок камеры робота" hidden style="max-width:100%;border-radius:8px;margin-top:8px">`;
@@ -40,12 +44,33 @@ export default function mount(el, ctx) {
         if (f.jpeg) { $('live-img').src = 'data:image/jpeg;base64,' + f.jpeg; $('live-img').hidden = false; $('live-status').textContent = 'Вживую · ' + time(f.at); }
         else $('live-status').textContent = f.reason || (f.state === 'live' || f.state === 'starting' || f.state === 'off' ? 'Включаю камеру…' : f.state);
       } catch (e) { $('live-status').textContent = e.message; stopWatch(); }
-      await new Promise(r => setTimeout(r, 700));
+      await new Promise(r => setTimeout(r, 400));
     }
     stopWatch();
   }
-  function stopWatch() { watching = false; $('live').textContent = 'Смотреть вживую'; $('live-img').hidden = true; }
-  $('live').onclick = () => { if (watching) { stopWatch(); return; } watching = true; $('live').textContent = 'Остановить'; watch(); };
+  function stopWatch() { watching = false; drive(null); $('live').textContent = 'Смотреть вживую'; $('live-img').hidden = true; $('pad').style.display = 'none'; }
+  $('live').onclick = () => { if (watching) { stopWatch(); return; } watching = true; $('pad').style.display = 'grid'; $('live').textContent = 'Остановить'; watch(); };
+
+  // Manual drive: one step every 250 ms while a direction is held (the robot moves a short step per command).
+  let driving = null, driveTimer = 0;
+  const step = () => ctx.rpc('/api/v1/command', { name: 'remote_move', velocity: driving[0], rotation: driving[1] })
+    .catch(e => { ctx.toast(e.message, true); drive(null); });
+  function drive(move) {
+    clearInterval(driveTimer); driving = move;
+    if (move) { step(); driveTimer = setInterval(step, 250); }
+  }
+  for (const b of el.querySelectorAll('[data-move]')) {
+    const move = b.dataset.move.split(',').map(Number);
+    b.onpointerdown = e => { e.preventDefault(); b.setPointerCapture(e.pointerId); drive(move); };
+    b.onpointerup = b.onpointercancel = () => drive(null);
+  }
+  const keys = { ArrowUp: '200,0', ArrowDown: '-150,0', ArrowLeft: '0,60', ArrowRight: '0,-60' };
+  document.addEventListener('keydown', e => {
+    if (!watching || !keys[e.key] || e.repeat || e.target.closest?.('input,select,textarea')) return;
+    e.preventDefault(); drive(keys[e.key].split(',').map(Number));
+  });
+  document.addEventListener('keyup', e => { if (keys[e.key] && driving) drive(null); });
+  $('dock').onclick = () => ctx.rpc('/api/v1/command', { name: 'dock' }).then(() => ctx.toast('Робот едет на базу'), e => ctx.toast(e.message, true));
   $('enabled').onchange = async () => {
     try { render(await ctx.call('set', { enabled: $('enabled').checked })); } catch (e) { ctx.toast(e.message, true); refresh(); }
   };
