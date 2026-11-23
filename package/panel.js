@@ -4,16 +4,19 @@ export default function mount(el, ctx) {
 <p class="muted small">Во время уборки прошивка сама фотографирует фронтальной камерой и складывает несколько последних снимков на робот (для сбора данных ИИ). Модуль только показывает их здесь: снимки не покидают робот через модуль. Выключено — модуль снимки не отдаёт.</p>
 <div class="row"><button data-r="live">Смотреть вживую</button></div>
 <p data-r="live-status" class="muted small" role="status"></p>
-<img data-r="live-img" alt="Камера робота вживую" hidden style="max-width:100%;border-radius:8px">
-<div data-r="pad" style="max-width:240px;display:none;grid-template-columns:repeat(3,1fr);gap:6px">
+<img data-r="live-img" alt="Камера робота вживую" hidden>
+<div data-r="pad">
 <span></span><button data-move="200,0" aria-label="Вперёд">▲</button><span></span>
 <button data-move="0,60" aria-label="Влево">◀</button><button data-r="dock" aria-label="На базу">⌂</button><button data-move="0,-60" aria-label="Вправо">▶</button>
 <span></span><button data-move="-150,0" aria-label="Назад">▼</button><span></span></div>
 <p class="muted small">Изображение идёт, пока открыта эта панель, в том числе во время уборки; на роботе горит индикатор камеры. Кнопки движения (или стрелки на клавиатуре) — ручное управление: робот едет, пока кнопка нажата; первое нажатие сводит его с базы, через 15 с без команд он останавливается. ⌂ — на базу.</p>
 <p data-r="status" class="muted small" role="status"></p>
 <div class="row"><select data-r="list" aria-label="Снимок"></select><button data-r="refresh">Обновить</button></div>
-<img data-r="photo" alt="Снимок камеры робота" hidden style="max-width:100%;border-radius:8px;margin-top:8px">`;
+<img data-r="photo" alt="Снимок камеры робота" hidden>`;
   const $ = name => el.querySelector(`[data-r="${name}"]`);
+  // The agent's CSP drops style attributes in panel HTML; styles set from script apply.
+  Object.assign($('pad').style, { display: 'none', maxWidth: '240px', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginTop: '8px' });
+  for (const name of ['photo', 'live-img']) Object.assign($(name).style, { maxWidth: '100%', borderRadius: '8px', marginTop: '8px' });
   const time = s => new Date(s * 1000).toLocaleString();
   let active = false, shown = '', last = 0;
 
@@ -40,7 +43,8 @@ export default function mount(el, ctx) {
   async function watch() {
     while (watching && !document.hidden && el.isConnected) {
       try {
-        const f = await ctx.call('live');
+        // Not ctx.call: that one blocks the other controls of the page while it runs, and this polls.
+        const f = await ctx.rpc('/api/v1/m/camera/live', {});
         if (f.jpeg) { $('live-img').src = 'data:image/jpeg;base64,' + f.jpeg; $('live-img').hidden = false; $('live-status').textContent = 'Вживую · ' + time(f.at); }
         else $('live-status').textContent = f.reason || (f.state === 'live' || f.state === 'starting' || f.state === 'off' ? 'Включаю камеру…' : f.state);
       } catch (e) { $('live-status').textContent = e.message; stopWatch(); }
