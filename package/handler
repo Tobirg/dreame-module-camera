@@ -7,7 +7,54 @@ LIVE=${CAMERA_LIVE:-/tmp/dreame-camera} # written by the camera-live service
 FLAG="${DREAME_MODULE_DATA:?}/enabled"
 LIGHT="$DREAME_MODULE_DATA/light" # fill light while the camera captures
 
+# Video access code: the 4-digit PIN of the stock app's video monitoring (r2505 4.3.9_2021).
+# MIoT action 10001:4 takes in[{piid, value: JSON string that must carry "session"}]:
+# 1100 reads it (1 set, 0 none), 1101 sets it (newcode/oldcode = SHA-256 hex, answers 1 on success),
+# 1104 {"value":1|0} allows/forbids the physical reset. While allowed, three presses of Home run
+# ACLCodeOps.sh without arguments: it deletes /data/aclcode and says phrase 364.
+AVACMD=${CAMERA_AVACMD:-avacmd}
+DEVICE_CONF=${CAMERA_DEVICE_CONF:-/data/config/dmio/device.conf}
+ACL_LOG=${CAMERA_ACL_LOG:-/tmp/log/avaexec.log}
+ACL_FLAG=${CAMERA_ACL_FLAG:-/tmp/log/camerastreamer_allow_reset}
+ARMED="$DREAME_MODULE_DATA/code-armed" # "<epoch> <avaexec.log size>" while the reset is allowed
+
 fail() { printf '{"error":"%s"}\n' "$1"; exit 1; }
+# acl <piid> <inner fields, escaped, ending with a comma>: prints out[0].value (empty if none).
+acl() {
+    did=$(sed -n 's/^did=//p' "$DEVICE_CONF")
+    case "$did" in ''|*[!0-9]*) fail "Не найден did робота" ;; esac
+    r=$("$AVACMD" msg_cvt "{\"id\":$$,\"method\":\"action\",\"params\":{\"did\":\"$did\",\"siid\":10001,\"aiid\":4,\"in\":[{\"piid\":$1,\"value\":\"{$2\\\"session\\\":\\\"local\\\"}\"}]}}")
+    echo "$r" | grep -qE '"code": ?0[,}]' || fail "Робот не ответил на запрос кода"
+    v=$(echo "$r" | sed -n 's/.*"out": *\[{[^]]*"value": *\(-\{0,1\}[0-9]*\).*/\1/p')
+    [ "$v" = "-1" ] && fail "Робот отклонил запрос кода"
+    echo "$v"
+}
+logsize() { wc -c < "$ACL_LOG" 2>/dev/null || echo 0; }
+# pressed <offset>: a Home triple press logged after that avaexec.log size (a shorter log was rotated).
+pressed() {
+    off=$1; [ "$(logsize)" -lt "$off" ] && off=0
+    tail -c +$((off + 1)) "$ACL_LOG" 2>/dev/null | tr -d '\r' | grep -q '^start: .*, /usr/bin/ACLCodeOps.sh &$'
+}
+# code [true|false]: state, or allow/forbid the Home reset; the stock app also gives up after 5 minutes.
+code() {
+    reset=false; change=$1
+    if [ -f "$ARMED" ]; then
+        read -r at off < "$ARMED"
+        if pressed "$off"; then reset=true; change=${change:-false}
+        elif [ $(( $(date +%s) - at )) -gt 300 ]; then change=${change:-false}; fi
+    fi
+    if [ "$change" = true ] && [ $reset = false ]; then
+        v=$(acl 1104 '\"value\":1,') || { echo "$v"; exit 1; }
+        mkdir -p "${ARMED%/*}" && echo "$(date +%s) $(logsize)" > "$ARMED"
+    elif [ -n "$change" ]; then
+        v=$(acl 1104 '\"value\":0,') || { echo "$v"; exit 1; }
+        rm -f "$ARMED"
+    fi
+    set=$(acl 1100 '') || { echo "$set"; exit 1; }
+    waiting=false; [ -f "$ARMED" ] && [ -e "$ACL_FLAG" ] && waiting=true
+    printf '{"code_set":%s,"waiting":%s,"reset":%s}\n' "$([ "$set" = 1 ] && echo true || echo false)" "$waiting" "$reset"
+}
+pin() { echo "$1" | grep -qE '^[0-9]{4}$' || fail "Код — четыре цифры"; printf %s "$1" | sha256sum | cut -d' ' -f1; }
 # list: newest first, "<mtime> <name>" for each photo.
 # Names go into JSON and HTML unescaped, so anything but plain file names is skipped.
 list() { for f in "$PHOTOS"/*.jpg; do [ -f "$f" ] && echo "$(stat -c %Y "$f") ${f##*/}"; done | grep -E '^[0-9]+ [A-Za-z0-9._-]+$' | sort -rn; }
@@ -56,6 +103,18 @@ live)
     else
         cat "$LIVE/status.json" 2>/dev/null || echo '{"state":"starting","reason":""}'
     fi ;;
+code)
+    case "$P_enabled" in true|false|'') code "$P_enabled" ;; *) fail "enabled must be true or false" ;; esac ;;
+code_set)
+    new=$(pin "$P_code") || { echo "$new"; exit 1; }
+    fields="\\\"newcode\\\":\\\"$new\\\","
+    if [ -n "$P_old_code" ]; then
+        old=$(pin "$P_old_code") || { echo "$old"; exit 1; }
+        fields="$fields\\\"oldcode\\\":\\\"$old\\\","
+    fi
+    v=$(acl 1101 "$fields") || { echo "$v"; exit 1; }
+    [ "$v" = 1 ] || fail "Робот не принял код: неверный текущий код?"
+    code ;;
 uninstall) echo '{}' ;;
 *) fail "unknown action" ;;
 esac

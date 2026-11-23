@@ -12,7 +12,13 @@ export default function mount(el, ctx) {
 <p class="muted small">Изображение идёт, пока открыта эта панель, в том числе во время уборки; на роботе горит индикатор камеры. «Подсветка при просмотре» включает фронтальный фонарь робота, пока камера снимает (здесь или в Home Assistant). Кнопки движения (или стрелки на клавиатуре) — ручное управление: робот едет, пока кнопка нажата; первое нажатие сводит его с базы, через 15 с без команд он останавливается. ⌂ — на базу.</p>
 <p data-r="status" class="muted small" role="status"></p>
 <div class="row"><select data-r="list" aria-label="Снимок"></select><button data-r="refresh">Обновить</button></div>
-<img data-r="photo" alt="Снимок камеры робота" hidden>`;
+<img data-r="photo" alt="Снимок камеры робота" hidden>
+<details data-r="code-box"><summary>Код доступа к видео в приложении Dreame</summary>
+<p data-r="code-status" class="muted small" role="status"></p>
+<form data-r="code-form"><label data-r="code-old-label">Текущий код<input data-r="code-old" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off"></label>
+<label>Новый код<input data-r="code-new" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" required></label><button type="submit">Задать код</button></form>
+<button data-r="code-reset">Сбросить код кнопкой «Домой»</button>
+<p class="muted small">Код из 4 цифр нужен только облачному видеонаблюдению в приложении Dreame; просмотр здесь и управление роботом его не спрашивают. Забыл код — нажми «Сбросить» и в течение 5 минут нажми «Домой» на роботе три раза подряд: робот удалит код и скажет об этом.</p></details>`;
   const $ = name => el.querySelector(`[data-r="${name}"]`);
   // The agent's CSP drops style attributes in panel HTML; styles set from script apply.
   Object.assign($('pad').style, { display: 'none', maxWidth: '240px', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginTop: '8px' });
@@ -81,6 +87,26 @@ export default function mount(el, ctx) {
   };
   $('light').onchange = async () => {
     try { render(await ctx.call('light', { on: $('light').checked })); } catch (e) { ctx.toast(e.message, true); refresh(); }
+  };
+  // Video access code: while allowed, three presses of Home on the robot clear it.
+  let codeWaiting = false, codePoll = 0;
+  async function code(params) {
+    clearTimeout(codePoll);
+    const c = await ctx.call(params.code ? 'code_set' : 'code', params);
+    codeWaiting = c.waiting;
+    $('code-old-label').hidden = !c.code_set; $('code-old').required = c.code_set;
+    $('code-status').textContent = c.waiting ? 'Жду: нажми «Домой» на роботе три раза подряд.' : c.reset ? 'Код сброшен кнопкой «Домой».' : c.code_set ? 'Код задан.' : 'Код не задан.';
+    $('code-reset').textContent = c.waiting ? 'Отменить' : 'Сбросить код кнопкой «Домой»';
+    if (c.reset) ctx.toast('Код доступа к видео сброшен');
+    if (c.waiting && el.isConnected) codePoll = setTimeout(() => code({}).catch(e => ctx.toast(e.message, true)), 3000);
+  }
+  $('code-box').ontoggle = () => { if ($('code-box').open) code({}).catch(e => { $('code-status').textContent = e.message; }); };
+  $('code-reset').onclick = () => code({ enabled: !codeWaiting }).catch(e => ctx.toast(e.message, true));
+  $('code-form').onsubmit = e => {
+    e.preventDefault();
+    const old = $('code-old'), neu = $('code-new');
+    code({ code: neu.value, ...(old.required ? { old_code: old.value } : {}) })
+      .then(() => { old.value = neu.value = ''; ctx.toast('Код доступа к видео задан'); }, e => ctx.toast(e.message, true));
   };
   $('list').onchange = () => show($('list').value);
   $('refresh').onclick = refresh;
