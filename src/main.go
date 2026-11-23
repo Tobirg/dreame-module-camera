@@ -3,7 +3,8 @@
 // enabled, and keeps the newest frame in <dir>/live.jpg. The firmware's AI uses the same sensor
 // through /dev/video12; the driver counts users, so either side opening or closing leaves the other
 // streaming (checked on r2505 both ways at 15 fps). The camera LED is
-// on while it captures, as the firmware does for its own video monitoring.
+// on while it captures, as the firmware does for its own video monitoring, and the fill light too
+// when the light flag is set.
 package main
 
 import (
@@ -22,6 +23,7 @@ import (
 const (
 	device   = "/dev/video0"
 	led      = "/sys/class/gpio/gpio229/value" // "ai monitor led" in the firmware's set_gpio.sh
+	fill     = "/sys/class/pwm/pwmchip0/pwm14"         // the front fill light, as pwm_control_led.sh drives it
 	wantFor  = 8 * time.Second                 // the panel asks about every second
 	frameGap = 250 * time.Millisecond
 )
@@ -47,7 +49,12 @@ func main() {
 
 func run(ctx context.Context) {
 	var cam *camera
+	lit := false
 	stopCam := func(state, reason string) {
+		if lit {
+			setLight(false)
+			lit = false
+		}
 		if cam != nil {
 			cam.close()
 			cam = nil
@@ -90,7 +97,23 @@ func run(ctx context.Context) {
 			}
 		}
 		setStatus("live", "")
+		if _, err := os.Stat(filepath.Join(os.Getenv("DREAME_MODULE_DATA"), "light")); (err == nil) != lit {
+			lit = !lit
+			setLight(lit)
+		}
 	}
+}
+
+// setLight switches the fill light at the brightness the firmware's video monitoring uses (0.6).
+// shortcut: off ends any light the firmware lit itself meanwhile; it relights it when it needs it.
+func setLight(on bool) {
+	if !on {
+		_ = os.WriteFile(fill+"/enable", []byte("0"), 0644)
+		return
+	}
+	_ = os.WriteFile(fill+"/period", []byte("20833"), 0644)
+	_ = os.WriteFile(fill+"/duty_cycle", []byte("8333"), 0644) // inverted output: 40 % duty is 60 % light
+	_ = os.WriteFile(fill+"/enable", []byte("1"), 0644)
 }
 
 func setStatus(state, reason string) {

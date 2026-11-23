@@ -2,14 +2,14 @@
 export default function mount(el, ctx) {
   el.innerHTML = `<label class="check"><input data-r="enabled" type="checkbox">Показывать снимки камеры</label>
 <p class="muted small">Во время уборки прошивка сама фотографирует фронтальной камерой и складывает несколько последних снимков на робот (для сбора данных ИИ). Модуль только показывает их здесь: снимки не покидают робот через модуль. Выключено — модуль снимки не отдаёт.</p>
-<div class="row"><button data-r="live">Смотреть вживую</button></div>
+<div class="row"><button data-r="live">Смотреть вживую</button><label class="check"><input data-r="light" type="checkbox">Подсветка</label></div>
 <p data-r="live-status" class="muted small" role="status"></p>
 <img data-r="live-img" alt="Камера робота вживую" hidden>
 <div data-r="pad">
 <span></span><button data-move="200,0" aria-label="Вперёд">▲</button><span></span>
 <button data-move="0,60" aria-label="Влево">◀</button><button data-r="dock" aria-label="На базу">⌂</button><button data-move="0,-60" aria-label="Вправо">▶</button>
 <span></span><button data-move="-150,0" aria-label="Назад">▼</button><span></span></div>
-<p class="muted small">Изображение идёт, пока открыта эта панель, в том числе во время уборки; на роботе горит индикатор камеры. Кнопки движения (или стрелки на клавиатуре) — ручное управление: робот едет, пока кнопка нажата; первое нажатие сводит его с базы, через 15 с без команд он останавливается. ⌂ — на базу.</p>
+<p class="muted small">Изображение идёт, пока открыта эта панель, в том числе во время уборки; на роботе горит индикатор камеры. «Подсветка» включает фронтальный фонарь робота, пока камера снимает (здесь или в Home Assistant). Кнопки движения (или стрелки на клавиатуре) — ручное управление: робот едет, пока кнопка нажата; первое нажатие сводит его с базы, через 15 с без команд он останавливается. ⌂ — на базу.</p>
 <p data-r="status" class="muted small" role="status"></p>
 <div class="row"><select data-r="list" aria-label="Снимок"></select><button data-r="refresh">Обновить</button></div>
 <img data-r="photo" alt="Снимок камеры робота" hidden>`;
@@ -28,6 +28,7 @@ export default function mount(el, ctx) {
   }
   function render(s) {
     $('enabled').checked = s.enabled;
+    $('light').checked = s.light;
     $('list').innerHTML = s.photos.map(p => `<option value="${p.name}">${time(p.at)}</option>`).join('');
     $('list').disabled = $('refresh').disabled = $('live').disabled = !s.enabled;
     if (!s.enabled) stopWatch();
@@ -77,6 +78,9 @@ export default function mount(el, ctx) {
   $('dock').onclick = () => ctx.rpc('/api/v1/command', { name: 'dock' }).then(() => ctx.toast('Робот едет на базу'), e => ctx.toast(e.message, true));
   $('enabled').onchange = async () => {
     try { render(await ctx.call('set', { enabled: $('enabled').checked })); } catch (e) { ctx.toast(e.message, true); refresh(); }
+  };
+  $('light').onchange = async () => {
+    try { render(await ctx.call('light', { on: $('light').checked })); } catch (e) { ctx.toast(e.message, true); refresh(); }
   };
   $('list').onchange = () => show($('list').value);
   $('refresh').onclick = refresh;

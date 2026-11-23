@@ -5,6 +5,7 @@
 PHOTOS=${CAMERA_PHOTOS:-/data/ai_offline_collection}
 LIVE=${CAMERA_LIVE:-/tmp/dreame-camera} # written by the camera-live service
 FLAG="${DREAME_MODULE_DATA:?}/enabled"
+LIGHT="$DREAME_MODULE_DATA/light" # fill light while the camera captures
 
 fail() { printf '{"error":"%s"}\n' "$1"; exit 1; }
 # list: newest first, "<mtime> <name>" for each photo.
@@ -12,8 +13,9 @@ fail() { printf '{"error":"%s"}\n' "$1"; exit 1; }
 list() { for f in "$PHOTOS"/*.jpg; do [ -f "$f" ] && echo "$(stat -c %Y "$f") ${f##*/}"; done | grep -E '^[0-9]+ [A-Za-z0-9._-]+$' | sort -rn; }
 status() {
     enabled=false; [ -e "$FLAG" ] && enabled=true
+    light=false; [ -e "$LIGHT" ] && light=true
     photos=$(list | head -20 | awk 'BEGIN{ORS=""} {printf "%s{\"name\":\"%s\",\"at\":%s}", (NR > 1 ? "," : ""), $2, $1}')
-    printf '{"enabled":%s,"folder":%s,"photos":[%s]}\n' "$enabled" "$([ -d "$PHOTOS" ] && echo true || echo false)" "$photos"
+    printf '{"enabled":%s,"light":%s,"folder":%s,"photos":[%s]}\n' "$enabled" "$light" "$([ -d "$PHOTOS" ] && echo true || echo false)" "$photos"
 }
 
 case "$1" in
@@ -26,6 +28,13 @@ set)
         true) mkdir -p "${FLAG%/*}" && : > "$FLAG" ;;
         false) rm -f "$FLAG" ;;
         *) fail "enabled must be true or false" ;;
+    esac
+    status ;;
+light)
+    case "$P_on" in
+        true) mkdir -p "${LIGHT%/*}" && : > "$LIGHT" ;;
+        false) rm -f "$LIGHT" ;;
+        *) fail "on must be true or false" ;;
     esac
     status ;;
 photo)

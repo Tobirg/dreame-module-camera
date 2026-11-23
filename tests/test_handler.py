@@ -56,9 +56,15 @@ class HandlerTests(unittest.TestCase):
         os.utime(old, (1000, 1000))
         self.assertNotIn('jpeg', self.run_handler('live')[1], 'a stale frame is not shown')
 
+    def test_light(self):
+        self.assertTrue(self.run_handler('light', on=True)[1]['light'])
+        self.assertTrue((self.data / 'light').exists(), 'the service reads this flag')
+        self.assertFalse(self.run_handler('light', on=False)[1]['light'])
+        self.assertEqual(self.run_handler('light', on='maybe')[0], 1)
+
     def test_no_folder(self):
         self.photos.rmdir()
-        self.assertEqual(self.run_handler('status')[1], {'enabled': False, 'folder': False, 'photos': []})
+        self.assertEqual(self.run_handler('status')[1], {'enabled': False, 'light': False, 'folder': False, 'photos': []})
 
 
 if __name__ == '__main__':
