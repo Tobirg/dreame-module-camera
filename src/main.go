@@ -100,6 +100,11 @@ func run(ctx context.Context) {
 		if _, err := os.Stat(filepath.Join(os.Getenv("DREAME_MODULE_DATA"), "light")); (err == nil) != lit {
 			lit = !lit
 			setLight(lit)
+		} else if lit {
+			// The firmware runs pwm_control_led.sh off on its own (e.g. after a manual-drive step): relight.
+			if b, _ := os.ReadFile(fill + "/enable"); len(b) > 0 && b[0] == '0' {
+				setLight(true)
+			}
 		}
 	}
 }
