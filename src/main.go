@@ -87,16 +87,21 @@ func run(ctx context.Context) {
 	var cam *camera
 	camDev := ""
 	lit := false
+	// What the firmware had lit before the view (e.g. its own light for the AI while cleaning in
+	// the dark): closing the view puts these back instead of switching them off.
+	ledWas, fillWas := "0", false
 	stopCam := func(state, reason string) {
 		if lit {
-			setLight(false)
+			if !fillWas {
+				setLight(false)
+			}
 			lit = false
 		}
 		if cam != nil {
 			cam.close()
 			cam = nil
 			camDev = ""
-			_ = os.WriteFile(led, []byte("0"), 0644)
+			_ = os.WriteFile(led, []byte(ledWas), 0644)
 			_ = os.Remove(filepath.Join(dir, "live.jpg"))
 		}
 		setStatus(state, reason)
@@ -116,6 +121,7 @@ func run(ctx context.Context) {
 		if cam != nil && camDev != dev {
 			cam.close() // the agent's hold came or went: hand video0 over before the firmware asks for it
 			cam = nil
+			_ = os.WriteFile(led, []byte(ledWas), 0644)
 			setStatus("switching", "")
 		}
 		if cam == nil {
@@ -129,6 +135,10 @@ func run(ctx context.Context) {
 				continue
 			}
 			camDev = dev
+			ledWas = "0"
+			if b, _ := os.ReadFile(led); len(b) > 0 && b[0] == '1' {
+				ledWas = "1"
+			}
 			_ = os.WriteFile(led, []byte("1"), 0644)
 		}
 		img, err := cam.frame(3 * time.Second)
@@ -143,6 +153,12 @@ func run(ctx context.Context) {
 		setStatusDev("live", camDev)
 		if _, err := os.Stat(filepath.Join(os.Getenv("DREAME_MODULE_DATA"), "light")); (err == nil) != lit {
 			lit = !lit
+			if lit {
+				b, _ := os.ReadFile(fill + "/enable")
+				fillWas = len(b) > 0 && b[0] == '1'
+			} else {
+				fillWas = false // the viewer switched it off on purpose
+			}
 			setLight(lit)
 		} else if lit {
 			// The firmware runs pwm_control_led.sh off on its own (e.g. after a manual-drive step): relight.
