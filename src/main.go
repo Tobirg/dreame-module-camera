@@ -23,11 +23,15 @@ import (
 )
 
 const (
-	device   = "/dev/video0"
-	led      = "/sys/class/gpio/gpio229/value" // "ai monitor led" in the firmware's set_gpio.sh
-	fill     = "/sys/class/pwm/pwmchip0/pwm14" // the front fill light, as pwm_control_led.sh drives it
-	wantFor  = 8 * time.Second                 // viewers ask at least every second
-	frameGap = 20 * time.Millisecond           // the sensor gives 15 fps; frame() waits for the next one
+	device = "/dev/video0"
+	// While the agent drives (its hold file is fresh) the firmware's video monitoring needs
+	// /dev/video0, so the view moves to video12, another vin node on the same sensor.
+	holdDevice = "/dev/video12"
+	holdFor    = 20 * time.Second                // the agent refreshes it with each keep_alive (8 s)
+	led        = "/sys/class/gpio/gpio229/value" // "ai monitor led" in the firmware's set_gpio.sh
+	fill       = "/sys/class/pwm/pwmchip0/pwm14" // the front fill light, as pwm_control_led.sh drives it
+	wantFor    = 8 * time.Second                 // viewers ask at least every second
+	frameGap   = 20 * time.Millisecond           // the sensor gives 15 fps; frame() waits for the next one
 )
 
 var dir = envOr("CAMERA_LIVE", "/tmp/dreame-camera")
@@ -81,6 +85,7 @@ func run(ctx context.Context) {
 	}
 	defer close(frames)
 	var cam *camera
+	camDev := ""
 	lit := false
 	stopCam := func(state, reason string) {
 		if lit {
@@ -90,6 +95,7 @@ func run(ctx context.Context) {
 		if cam != nil {
 			cam.close()
 			cam = nil
+			camDev = ""
 			_ = os.WriteFile(led, []byte("0"), 0644)
 			_ = os.Remove(filepath.Join(dir, "live.jpg"))
 		}
@@ -103,8 +109,17 @@ func run(ctx context.Context) {
 			stopCam("off", "")
 			continue
 		}
+		dev := device
+		if st, err := os.Stat(filepath.Join(dir, "hold")); err == nil && time.Since(st.ModTime()) < holdFor {
+			dev = holdDevice
+		}
+		if cam != nil && camDev != dev {
+			cam.close() // the agent's hold came or went: hand video0 over before the firmware asks for it
+			cam = nil
+			setStatus("switching", "")
+		}
 		if cam == nil {
-			if cam, err = openCamera(device, 864, 480); err != nil {
+			if cam, err = openCamera(dev, 864, 480); err != nil {
 				msg := err.Error()
 				if err == errAsleep {
 					msg = "робот спит на базе, питание камеры выключено: кнопка движения сведёт его с базы и разбудит"
@@ -113,6 +128,7 @@ func run(ctx context.Context) {
 				time.Sleep(5 * time.Second)
 				continue
 			}
+			camDev = dev
 			_ = os.WriteFile(led, []byte("1"), 0644)
 		}
 		img, err := cam.frame(3 * time.Second)
@@ -124,7 +140,7 @@ func run(ctx context.Context) {
 		case frames <- img:
 		default:
 		}
-		setStatus("live", "")
+		setStatusDev("live", camDev)
 		if _, err := os.Stat(filepath.Join(os.Getenv("DREAME_MODULE_DATA"), "light")); (err == nil) != lit {
 			lit = !lit
 			setLight(lit)
@@ -151,6 +167,12 @@ func setLight(on bool) {
 
 func setStatus(state, reason string) {
 	b, _ := json.Marshal(map[string]string{"state": state, "reason": reason})
+	_ = os.WriteFile(filepath.Join(dir, "status.json"), b, 0600)
+}
+
+// setStatusDev reports which device the view holds: the agent waits until it is not /dev/video0.
+func setStatusDev(state, dev string) {
+	b, _ := json.Marshal(map[string]string{"state": state, "reason": "", "device": dev})
 	_ = os.WriteFile(filepath.Join(dir, "status.json"), b, 0600)
 }
 
