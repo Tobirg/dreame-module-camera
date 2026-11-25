@@ -124,6 +124,15 @@ func (c *camera) frame(timeout time.Duration) (image.Image, error) {
 		time.Sleep(15 * time.Millisecond)
 	}
 	i := int(binary.LittleEndian.Uint32(x.b[0:]))
+	// Older frames may wait in the queue: take the newest one, so the picture lags by no more than a frame.
+	for {
+		y := newBuffer(0)
+		if ioctl(c.fd, vidiocDQBuf, unsafe.Pointer(&y.b)) != nil {
+			break
+		}
+		_ = ioctl(c.fd, vidiocQBuf, unsafe.Pointer(&newBuffer(i).b))
+		i = int(binary.LittleEndian.Uint32(y.b[0:]))
+	}
 	defer ioctl(c.fd, vidiocQBuf, unsafe.Pointer(&newBuffer(i).b))
 	return nv21(c.mem[i], c.w, c.h)
 }

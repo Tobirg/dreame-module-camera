@@ -22,9 +22,9 @@ import (
 const (
 	device   = "/dev/video0"
 	led      = "/sys/class/gpio/gpio229/value" // "ai monitor led" in the firmware's set_gpio.sh
-	fill     = "/sys/class/pwm/pwmchip0/pwm14"         // the front fill light, as pwm_control_led.sh drives it
-	wantFor  = 8 * time.Second                 // the panel asks about every second
-	frameGap = 250 * time.Millisecond
+	fill     = "/sys/class/pwm/pwmchip0/pwm14" // the front fill light, as pwm_control_led.sh drives it
+	wantFor  = 8 * time.Second                 // viewers ask at least every second
+	frameGap = 20 * time.Millisecond           // the sensor gives 15 fps; frame() waits for the next one
 )
 
 var dir = envOr("CAMERA_LIVE", "/tmp/dreame-camera")
