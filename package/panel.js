@@ -12,7 +12,6 @@ export default function mount(el, ctx) {
 <form data-r="code-form"><label data-r="code-old-label">Текущий код<input data-r="code-old" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off"></label>
 <label>Новый код<input data-r="code-new" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" required></label><button type="submit">Задать код</button></form>
 <button data-r="code-reset">Сбросить код кнопкой «Домой»</button>
-<label class="check" data-r="voice-box" hidden><input data-r="voice" type="checkbox">Без голоса «camera monitoring»</label>
 <p class="muted small">Код из 4 цифр спрашивает видеонаблюдение в приложении Dreame. Агенту 0.71+ он тоже нужен для ручного управления (панель агента → Камера): с ним робот ездит в режиме видеомониторинга, без мотора пылесоса. Просмотр здесь его не спрашивает. Забыл код — нажми «Сбросить» и в течение 5 минут нажми «Домой» на роботе три раза подряд: робот удалит код и скажет об этом.</p></details>`;
   const $ = name => el.querySelector(`[data-r="${name}"]`);
   // The agent's CSP drops style attributes in panel HTML; styles set from script apply.
@@ -38,12 +37,6 @@ export default function mount(el, ctx) {
   }
   async function refresh() { try { render(await ctx.read('status')); } catch (e) { $('status').textContent = e.message; } }
 
-  // The agent's option (0.77+, main token): the robot keeps quiet when monitoring opens and ends.
-  ctx.rpc('/api/v1/system/video_voice').then(v => { $('voice').checked = v.enabled; $('voice-box').hidden = false; }, () => {});
-  $('voice').onchange = async () => {
-    try { $('voice').checked = (await ctx.rpc('/api/v1/system/video_voice', { enabled: $('voice').checked })).enabled; }
-    catch (e) { ctx.toast(e.message, true); $('voice').checked = !$('voice').checked; }
-  };
   $('enabled').onchange = async () => {
     try { render(await ctx.call('set', { enabled: $('enabled').checked })); } catch (e) { ctx.toast(e.message, true); refresh(); }
   };
