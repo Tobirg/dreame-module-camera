@@ -1,7 +1,7 @@
 // Camera panel, mounted by the Dreame Local web UI: mount(element, ctx).
 export default function mount(el, ctx) {
-  el.innerHTML = `<label class="check"><input data-r="enabled" type="checkbox">Показывать снимки камеры</label>
-<p class="muted small">Во время уборки прошивка сама фотографирует фронтальной камерой и складывает несколько последних снимков на робот (для сбора данных ИИ). Модуль только показывает их здесь: снимки не покидают робот через модуль. Выключено — модуль снимки не отдаёт.</p>
+  el.innerHTML = `<label class="check"><input data-r="enabled" type="checkbox">Показывать снимки из уборок</label>
+<p class="muted small">Во время уборки прошивка сама фотографирует фронтальной камерой и складывает несколько последних снимков на робот (для сбора данных ИИ). Модуль только показывает их здесь: снимки не покидают робот через модуль. Выключено — модуль снимки не отдаёт. Живой просмотр от этой галочки не зависит.</p>
 <div class="row"><button data-r="live">Смотреть вживую</button><label class="check"><input data-r="light" type="checkbox">Подсветка при просмотре</label></div>
 <p data-r="live-status" class="muted small" role="status"></p>
 <img data-r="live-img" alt="Камера робота вживую" hidden>
@@ -18,7 +18,7 @@ export default function mount(el, ctx) {
 <form data-r="code-form"><label data-r="code-old-label">Текущий код<input data-r="code-old" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off"></label>
 <label>Новый код<input data-r="code-new" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" required></label><button type="submit">Задать код</button></form>
 <button data-r="code-reset">Сбросить код кнопкой «Домой»</button>
-<p class="muted small">Код из 4 цифр нужен только облачному видеонаблюдению в приложении Dreame; просмотр здесь и управление роботом его не спрашивают. Забыл код — нажми «Сбросить» и в течение 5 минут нажми «Домой» на роботе три раза подряд: робот удалит код и скажет об этом.</p></details>`;
+<p class="muted small">Код из 4 цифр спрашивает видеонаблюдение в приложении Dreame. Агенту 0.71+ он тоже нужен для ручного управления (панель агента → Камера): с ним робот ездит в режиме видеомониторинга, без мотора пылесоса. Просмотр здесь его не спрашивает. Забыл код — нажми «Сбросить» и в течение 5 минут нажми «Домой» на роботе три раза подряд: робот удалит код и скажет об этом.</p></details>`;
   const $ = name => el.querySelector(`[data-r="${name}"]`);
   // The agent's CSP drops style attributes in panel HTML; styles set from script apply.
   Object.assign($('pad').style, { display: 'none', maxWidth: '240px', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginTop: '8px' });
@@ -36,8 +36,7 @@ export default function mount(el, ctx) {
     $('enabled').checked = s.enabled;
     $('light').checked = s.light;
     $('list').innerHTML = s.photos.map(p => `<option value="${p.name}">${time(p.at)}</option>`).join('');
-    $('list').disabled = $('refresh').disabled = $('live').disabled = !s.enabled;
-    if (!s.enabled) stopWatch();
+    $('list').disabled = $('refresh').disabled = !s.enabled;
     $('status').textContent = !s.folder ? 'Папки со снимками ещё нет: она появится после первой уборки.'
       : s.photos.length ? 'Снимков: ' + s.photos.length + ', последний ' + time(s.photos[0].at) : 'Снимков нет: прошивка удаляет их после отправки или новой уборки.';
     if (!s.enabled) { $('photo').hidden = true; shown = ''; return; }

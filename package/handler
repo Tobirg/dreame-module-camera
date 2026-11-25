@@ -95,7 +95,8 @@ photo)
     echo '"}' ;;
 live)
     # Asks the service to keep capturing; returns the newest frame, or what the service is doing.
-    [ -e "$FLAG" ] || fail "Показ снимков выключен"
+    # Not gated by the photos switch (1.6.0): like the app's monitoring, live view is for whoever holds
+    # a token that reaches this action; the switch only guards the AI photos the firmware keeps.
     mkdir -p "$LIVE" && : > "$LIVE/want"
     f="$LIVE/live.jpg"
     if [ -f "$f" ] && [ $(( $(date +%s) - $(stat -c %Y "$f") )) -le 3 ]; then

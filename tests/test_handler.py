@@ -44,8 +44,6 @@ class HandlerTests(unittest.TestCase):
         self.assertFalse(self.run_handler('set', enabled=False)[1]['enabled'])
 
     def test_live(self):
-        self.assertEqual(self.run_handler('live')[0], 1, 'no live view while off')
-        self.run_handler('set', enabled=True)
         self.assertEqual(self.run_handler('live')[1]['state'], 'starting')
         self.assertTrue((self.live / 'want').exists(), 'asks the service to capture')
         (self.live / 'status.json').write_text('{"state":"error","reason":"asleep"}')

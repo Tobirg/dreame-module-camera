@@ -1,6 +1,5 @@
 // camera-live is the camera module's service. It captures the front camera (/dev/video0) only
-// while the panel keeps asking for frames (the handler touches <dir>/want) and the module is
-// enabled, and keeps the newest frame in <dir>/live.jpg. The firmware's AI uses the same sensor
+// while a viewer keeps asking for frames (the handler touches <dir>/want), and keeps the newest frame in <dir>/live.jpg. The firmware's AI uses the same sensor
 // through /dev/video12; the driver counts users, so either side opening or closing leaves the other
 // streaming (checked on r2505 both ways at 15 fps). The camera LED is
 // on while it captures, as the firmware does for its own video monitoring, and the fill light too
@@ -67,8 +66,7 @@ func run(ctx context.Context) {
 	for ctx.Err() == nil {
 		time.Sleep(frameGap)
 		st, err := os.Stat(filepath.Join(dir, "want"))
-		_, enabled := os.Stat(filepath.Join(os.Getenv("DREAME_MODULE_DATA"), "enabled"))
-		if err != nil || time.Since(st.ModTime()) > wantFor || enabled != nil {
+		if err != nil || time.Since(st.ModTime()) > wantFor {
 			stopCam("off", "")
 			continue
 		}
