@@ -40,6 +40,10 @@ func envOr(k, v string) string {
 }
 
 func main() {
+	if len(os.Args) == 3 && os.Args[1] == "probe" {
+		probe(os.Args[2])
+		return
+	}
 	if len(os.Args) != 2 || os.Args[1] != "run" {
 		log.Fatal("run by the Dreame Local agent: camera-live run")
 	}
@@ -148,4 +152,30 @@ func setLight(on bool) {
 func setStatus(state, reason string) {
 	b, _ := json.Marshal(map[string]string{"state": state, "reason": reason})
 	_ = os.WriteFile(filepath.Join(dir, "status.json"), b, 0600)
+}
+
+// probe <device>: a diagnostic run by hand over ADB. Opens the device as the service does, takes
+// 45 frames and prints the size and rate, and saves the last one to /tmp/camera-probe.jpg.
+func probe(dev string) {
+	cam, err := openCamera(dev, 864, 480)
+	if err != nil {
+		fmt.Println("open:", err)
+		os.Exit(1)
+	}
+	defer cam.close()
+	start := time.Now()
+	var img image.Image
+	for i := 0; i < 45; i++ {
+		if img, err = cam.frame(3 * time.Second); err != nil {
+			fmt.Println("frame", i, err)
+			os.Exit(1)
+		}
+	}
+	d := time.Since(start)
+	fmt.Printf("%s %dx%d %.1f fps\n", dev, cam.w, cam.h, 45/d.Seconds())
+	yc := img.(*image.YCbCr)
+	balance(yc)
+	var b bytes.Buffer
+	_ = jpeg.Encode(&b, yc, &jpeg.Options{Quality: 70})
+	_ = os.WriteFile("/tmp/camera-probe.jpg", b.Bytes(), 0600)
 }
