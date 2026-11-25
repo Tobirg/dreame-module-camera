@@ -10,11 +10,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"image"
 	"image/jpeg"
 	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -47,6 +50,32 @@ func main() {
 }
 
 func run(ctx context.Context) {
+	// Colour balance and JPEG run beside the capture on two cores, so the view keeps up with the
+	// sensor's 15 fps (one core managed about 8).
+	frames := make(chan image.Image, 1)
+	var seq, shown atomic.Int64
+	for range 2 {
+		go func() {
+			for img := range frames {
+				n := seq.Add(1)
+				yc := img.(*image.YCbCr)
+				balance(yc)
+				var b bytes.Buffer
+				if jpeg.Encode(&b, yc, &jpeg.Options{Quality: 70}) != nil {
+					continue
+				}
+				if n < shown.Load() {
+					continue // the other worker already wrote a newer frame
+				}
+				shown.Store(n)
+				tmp := filepath.Join(dir, fmt.Sprintf("live.%d.tmp", n%2))
+				if os.WriteFile(tmp, b.Bytes(), 0600) == nil {
+					_ = os.Rename(tmp, filepath.Join(dir, "live.jpg"))
+				}
+			}
+		}()
+	}
+	defer close(frames)
 	var cam *camera
 	lit := false
 	stopCam := func(state, reason string) {
@@ -87,12 +116,9 @@ func run(ctx context.Context) {
 			stopCam("error", err.Error())
 			continue
 		}
-		var b bytes.Buffer
-		if jpeg.Encode(&b, img, &jpeg.Options{Quality: 70}) == nil {
-			tmp := filepath.Join(dir, "live.tmp")
-			if os.WriteFile(tmp, b.Bytes(), 0600) == nil {
-				_ = os.Rename(tmp, filepath.Join(dir, "live.jpg"))
-			}
+		select { // a busy encoder drops this frame: the picture stays fresh rather than late
+		case frames <- img:
+		default:
 		}
 		setStatus("live", "")
 		if _, err := os.Stat(filepath.Join(os.Getenv("DREAME_MODULE_DATA"), "light")); (err == nil) != lit {

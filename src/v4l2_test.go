@@ -11,8 +11,9 @@ func TestNV21(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Mean Y is already 110 and the one chroma pair is moved to neutral by the balance.
+	// Mean Y is already 110 and the one chroma pair is moved to neutral by the balance (run by the encoders).
 	y := img.(*image.YCbCr)
+	balance(y)
 	if y.Y[0] != 100 || y.Y[3] != 120 || y.Cr[0] != 128 || y.Cb[0] != 128 {
 		t.Fatal(y.Y, y.Cb, y.Cr)
 	}

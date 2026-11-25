@@ -147,7 +147,6 @@ func nv21(data []byte, w, h int) (image.Image, error) {
 	for i := range img.Cb {
 		img.Cr[i], img.Cb[i] = uv[2*i], uv[2*i+1]
 	}
-	balance(img)
 	return img, nil
 }
 
@@ -181,11 +180,17 @@ func balance(img *image.YCbCr) {
 	gain = min(max(gain, 1), 4)
 	dcb, dcr := 128-cb/len(img.Cb), 128-cr/len(img.Cr)
 	clamp := func(v float64) uint8 { return uint8(min(max(v, 0), 255)) }
+	// Lookup tables instead of float maths per pixel: about 0.6 M samples a frame on the robot's CPU.
+	var ly, lcb, lcr [256]uint8
+	for v := range 256 {
+		ly[v] = clamp(float64(v) * gain)
+		lcb[v] = clamp(128 + (float64(v+dcb)-128)*gain)
+		lcr[v] = clamp(128 + (float64(v+dcr)-128)*gain)
+	}
 	for i, v := range img.Y {
-		img.Y[i] = clamp(float64(v) * gain)
+		img.Y[i] = ly[v]
 	}
 	for i := range img.Cb {
-		img.Cb[i] = clamp(128 + (float64(int(img.Cb[i])+dcb)-128)*gain)
-		img.Cr[i] = clamp(128 + (float64(int(img.Cr[i])+dcr)-128)*gain)
+		img.Cb[i], img.Cr[i] = lcb[img.Cb[i]], lcr[img.Cr[i]]
 	}
 }
